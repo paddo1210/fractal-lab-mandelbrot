@@ -17,7 +17,7 @@ jobs:
         run: |
           if (!(Test-Path Source/Evolution.h)) {
             Expand-Archive -LiteralPath FractalLab-v03-source.zip -DestinationPath source-import
-            Get-ChildItem source-import/FractalLab-v03 -Force | Where-Object Name -ne '.github' | Copy-Item -Destination . -Recurse
+            Get-ChildItem source-import/FractalLab-v03 -Force | Where-Object Name -ne '.github' | Copy-Item -Destination . -Recurse -Force
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add TECHNICAL_CONCEPT.md Source Assets tests CMakeLists.txt CMakePresets.json CONCEPT.md README.md SOURCE_CHECKS.json TEST_REPORT.md .gitignore
