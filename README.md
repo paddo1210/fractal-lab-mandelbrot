@@ -2,7 +2,9 @@
 
 Separate VST3-Identität MbMc; v0.2b bleibt im main-Branch und als bisherige ZIP erhalten.
 
-Implementiert: vorbereiteter MATH FLIGHT, Speed, Drift X/Y, Zoomrichtung, Freeze, Flight Reset, Capture/Hold/Evolve/Recall/Reset, 4/8/16-Takt-Evolution, Mutation OFF/SUBTLE/LOW, gespeicherte MIDI- und mathematische Provenienz, neue GUI, 87 Hostparameter. Default: 8 Takte, maximal ein Step. Noch nicht gebaut/getestet: siehe TEST_REPORT.md.
+Implementiert: vorbereiteter MATH FLIGHT, Speed, Drift X/Y, Zoomrichtung, Freeze, Flight Reset, Capture/Hold/Evolve/Recall/Reset, 4/8/16-Takt-Evolution, Mutation OFF/SUBTLE/LOW, gespeicherte MIDI- und mathematische Provenienz, neue GUI, 87 Hostparameter. Default: 8 Takte, maximal ein Step. Windows-Release-Build und alle fünf automatisierten Testprogramme bestanden; siehe TEST_REPORT.md.
+
+[Installierbare Windows-VST3-ZIP](https://github.com/paddo1210/fractal-lab-mandelbrot/releases/download/v0.3-prototype/FRACTAL-LAB-MANDELBROT-v0.3-Windows-x64-VST3.zip) · [Erfolgreicher Build](https://github.com/paddo1210/fractal-lab-mandelbrot/actions/runs/38170180777). Quellcommit: 998d903080d5b424feb198cba3e2fb447938ab2a. Praktische Ableton-/APC20- und visuelle Abnahme offen.
 
 Start: X −0,75 / Y 0,1 / Zoom 1 / Radius 0,37 / N=128; Rhythm MASK=0; Pitch/Velocity=0,5. Transport stoppen, PREPARE drücken und Abschluss abwarten. Flight aktivieren, MATH FLIGHT auswählen, Speed=1, EVOLVE an. Nach Wiedergabe CAPTURE und HOLD, um das Motiv bei weiterlaufendem Flug zu wiederholen. Navigationseinstellungen benötigen nach Änderungen erneut Stop → PREPARE → Play. Capture/Recall/Reset lösen bei jedem Wechsel ihres booleschen Hostparameters aus.
 

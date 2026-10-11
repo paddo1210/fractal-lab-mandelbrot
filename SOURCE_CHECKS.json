@@ -1,1 +1,1 @@
-{"version":"0.3-prototype","status":"new build and tests pending; v0.2b results do not apply"}
+{"version":"0.3-prototype","status":"Windows Release build and five CTest targets passed","tested_commit":"998d903080d5b424feb198cba3e2fb447938ab2a","workflow_run":38170180777,"test_targets":["engine_tests","processor_tests","gui_tests","view_math_tests","evolution_tests"],"practical_ableton_test":false,"practical_apc20_test":false,"structure_test_E":"not implemented","visual_flight_test_G":"not implemented"}
