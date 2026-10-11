@@ -1,0 +1,14 @@
+{
+  "kind": "source integrity checks, not compiled runtime tests",
+  "checks": {
+    "engine_byte_identical": true,
+    "processBlock_identical": true,
+    "parameter_layout_identical": true,
+    "settings_identical": true,
+    "state_serialization_identical": true,
+    "separate_plugin_code": true,
+    "new_editor_constructed": true,
+    "portrait_asset_present": true
+  },
+  "all_passed": true
+}

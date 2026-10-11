@@ -1,0 +1,42 @@
+cmake_minimum_required(VERSION 3.22)
+project(FractalLabV02b VERSION 0.2.1 LANGUAGES C CXX)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+include(CTest)
+add_executable(engine_tests tests/EngineTests.cpp)
+target_include_directories(engine_tests PRIVATE Source)
+add_test(NAME engine_tests COMMAND engine_tests)
+option(MANDELBROT_BUILD_PLUGIN "Build JUCE VST3" ON)
+if(MANDELBROT_BUILD_PLUGIN)
+  set(JUCE_SOURCE_DIR "" CACHE PATH "Existing JUCE 8.0.6 source tree (optional)")
+  if(JUCE_SOURCE_DIR)
+    add_subdirectory("${JUCE_SOURCE_DIR}" JUCE)
+  else()
+    include(FetchContent)
+    FetchContent_Declare(JUCE GIT_REPOSITORY https://github.com/juce-framework/JUCE.git GIT_TAG 8.0.6 GIT_SHALLOW TRUE)
+    FetchContent_MakeAvailable(JUCE)
+  endif()
+  juce_add_plugin(FractalLabV02b
+    COMPANY_NAME "FractalLab" BUNDLE_ID "org.fractallab.mandelbrotmidi.v02b"
+    PLUGIN_MANUFACTURER_CODE FrLb PLUGIN_CODE MbMb
+    FORMATS VST3 PRODUCT_NAME "FRACTAL LAB MANDELBROT v0.2b"
+    IS_SYNTH TRUE NEEDS_MIDI_INPUT TRUE NEEDS_MIDI_OUTPUT TRUE
+    IS_MIDI_EFFECT FALSE COPY_PLUGIN_AFTER_BUILD FALSE)
+  juce_add_binary_data(LabAssets SOURCES Assets/DesignReference.png)
+  target_sources(FractalLabV02b PRIVATE Source/PluginProcessor.cpp Source/PluginProcessor.h Source/PluginEditor.h Source/LabTheme.h Source/ViewMath.h Source/Engine.h)
+  target_compile_definitions(FractalLabV02b PUBLIC JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0)
+  target_link_libraries(FractalLabV02b PRIVATE LabAssets juce::juce_audio_utils PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
+  add_executable(processor_tests tests/ProcessorTests.cpp)
+  target_include_directories(processor_tests PRIVATE Source)
+  target_link_libraries(processor_tests PRIVATE FractalLabV02b juce::juce_audio_utils)
+  add_test(NAME processor_tests COMMAND processor_tests)
+  add_executable(gui_tests tests/GuiTests.cpp)
+  target_include_directories(gui_tests PRIVATE Source)
+  target_link_libraries(gui_tests PRIVATE FractalLabV02b juce::juce_audio_utils)
+  add_test(NAME gui_tests COMMAND gui_tests)
+endif()
+
+add_executable(view_math_tests tests/ViewMathTests.cpp)
+target_include_directories(view_math_tests PRIVATE Source)
+add_test(NAME view_math_tests COMMAND view_math_tests)
+
