@@ -21,6 +21,7 @@ int main() {
         set(first,"mode",1); set(first,"x",-.75f); set(first,"y",.1f); set(first,"zoomExponent",2);
         set(first,"pitchAmount",.77f); set(first,"rhythmAmount",0); set(first,"threshold",.3f); set(first,"velocityAmount",.4f);
         set(first,"step02",5); set(first,"vel02",73); set(first,"on03",0);
+        first.prepareFlight();
         juce::MemoryBlock state; first.getStateInformation(state); second.setStateInformation(state.getData(),int(state.getSize()));
         auto a=first.state.copyState(),b=second.state.copyState();
         a.removeProperty("schemaVersion",nullptr); b.removeProperty("schemaVersion",nullptr);
@@ -39,6 +40,13 @@ int main() {
             check(audio1.getMagnitude(0,512)==0,"silent audio");
         }
         check(noteOns>=15,"preset comparison actually emitted notes");
+        set(first,"capture",1);juce::AudioBuffer<float> captureAudio(2,512);juce::MidiBuffer captureMidi;first.processBlock(captureAudio,captureMidi);
+        check(first.memoryState().hasCaptured,"capture stores actually applied pattern");
+        first.getStateInformation(state);MandelbrotProcessor restored;restored.setStateInformation(state.getData(),int(state.getSize()));
+        restored.setRateAndBufferSizeDetails(48000,512);restored.setPlayHead(&h1);restored.prepareToPlay(48000,512);restored.processBlock(captureAudio,captureMidi);
+        auto saved=first.memoryState().captured,loaded=restored.memoryState().captured;
+        check(restored.memoryState().hasCaptured,"captured memory survives preset");
+        for(int i=0;i<16;++i) {check(!fractal::stepDifferent(saved.pattern.notes[i],loaded.pattern.notes[i]),"saved MIDI pattern exact");check(saved.points[i].x==loaded.points[i].x && saved.points[i].y==loaded.points[i].y,"saved mathematical sample points exact");}
         const auto before=second.state.copyState(); const char garbage[]="not a preset";
         second.setStateInformation(garbage,sizeof(garbage)); check(before.isEquivalentTo(second.state.copyState()),"reject malformed preset");
         set(second,"panic",1); juce::AudioBuffer<float> audio(2,512); juce::MidiBuffer midi;

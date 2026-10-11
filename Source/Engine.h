@@ -89,12 +89,12 @@ struct Pattern {
     bool validRange=true,gen=true;
     double gate=0.65;
 };
-inline Pattern makePattern(Settings raw) noexcept {
+inline Pattern mapFeatures(Settings raw,const std::array<Feature,16>& features) noexcept {
     const auto s=sanitize(raw); Pattern p; p.gen=s.gen; p.gate=s.gate;
     std::array<int,128> allowed {}; int count=0;
     for(int note=s.low;note<=s.high;++note) if(inScale(note,s.root,s.scale)) allowed[count++]=note;
     if(count==0) { p.validRange=false; return p; }
-    for(int i=0;i<steps;++i) p.features[i]=analyze(coordinate(s,i),s.iterations);
+    p.features=features;
     for(int i=0;i<steps;++i) {
         auto& f=p.features[i];
         f.contrast=(s.sampler==1 && i==0) ? 0 : std::min(std::abs(f.magnitude-p.features[(i+15)%16].magnitude)/0.05,1.0);
@@ -114,11 +114,19 @@ inline Pattern makePattern(Settings raw) noexcept {
     }
     return p;
 }
+inline Pattern makePattern(Settings raw) noexcept {
+    const auto s=sanitize(raw); std::array<Feature,16> features;
+    for(int i=0;i<16;++i) features[i]=analyze(coordinate(s,i),s.iterations);
+    return mapFeatures(s,features);
+}
 class Engine {
 public:
     const Pattern& pattern() const noexcept { return current; }
     void requestReset() noexcept { resetRequested=true; }
     template<class Emit> void process(int samples,double rate,bool playing,double ppq,double bpm,const Settings& s,Emit emit) noexcept {
+        processPrepared(samples,rate,playing,ppq,bpm,s,emit,[&](double){ return makePattern(s); });
+    }
+    template<class Emit,class Provider> void processPrepared(int samples,double rate,bool playing,double ppq,double bpm,const Settings& s,Emit emit,Provider provider) noexcept {
         if(samples<=0) return;
         const double delta=bpm/(60*rate);
         if(resetRequested) { off(0,emit); running=false; resetRequested=false; }
@@ -127,7 +135,7 @@ public:
             off(0,emit); running=false; return;
         }
         const bool jump=!running || rate!=previousRate || std::abs(ppq-expected)>std::max(2*delta,1e-7);
-        if(jump) { off(0,emit); lastStep=std::numeric_limits<std::int64_t>::min(); current=makePattern(s); }
+        if(jump) { off(0,emit); lastStep=std::numeric_limits<std::int64_t>::min(); current=provider(ppq); }
         running=true; previousRate=rate;
         for(int i=0;i<samples;++i) {
             const double beat=ppq+i*delta;
@@ -136,7 +144,7 @@ public:
             if(absStep==lastStep) continue;
             lastStep=absStep; off(i,emit);
             const int step=int((absStep%16+16)%16);
-            if(step==0 && !(jump && i==0)) current=makePattern(s);
+            if(step==0 && !(jump && i==0)) current=provider(beat);
             if(jump && i==0 && std::abs(beat-absStep*.25)>delta*.51) continue;
             const auto& note=current.notes[step];
             if(!note.on) continue;

@@ -17,8 +17,8 @@ public:
         g.fillAll(lab::background());
         if(frame.isValid()) g.drawImage(frame,getLocalBounds().toFloat());
         if(!frame.isValid()) return;
-        const float sx=float(getWidth())/944, sy=float(getHeight())/208;
-        const auto v=fractal::viewport(displayed,944,208);
+        const float sx=float(getWidth())/472, sy=float(getHeight())/104;
+        const auto v=fractal::viewport(displayed,472,104);
         g.setColour(juce::Colours::white.withAlpha(.25f));
         g.drawLine(getWidth()*.5f,0,getWidth()*.5f,float(getHeight()));
         g.drawLine(0,getHeight()*.5f,float(getWidth()),getHeight()*.5f);
@@ -41,22 +41,22 @@ private:
             fractal::Settings s; uint64_t version;
             { std::lock_guard<std::mutex> guard(lock); s=requested; version=serial; }
             if(version==processed) { wait(100); continue; }
-            juce::Image next(juce::Image::RGB,944,208,false);
-            const auto v=fractal::viewport(s,944,208);
+            juce::Image next(juce::Image::RGB,472,104,false);
+            const auto v=fractal::viewport(s,472,104);
             bool cancelled=false;
-            for(int row=0;row<208;++row) {
-                { std::lock_guard<std::mutex> guard(lock); cancelled=threadShouldExit() || version!=serial; }
+            for(int row=0;row<104;++row) {
+                { std::lock_guard<std::mutex> guard(lock); cancelled=threadShouldExit(); }
                 if(cancelled) break;
-                for(int col=0;col<944;++col) {
+                for(int col=0;col<472;++col) {
                     const int n=fractal::escapeIterations(v.at(col+.5,row+.5),s.iterations);
                     const float t=n==0 ? 0 : .25f+.75f*float(std::log(1.+n)/std::log(1.+s.iterations));
-                    auto colour=(col<472 ? lab::cyan() : lab::orange()).withMultipliedBrightness(t);
+                    auto colour=(col<236 ? lab::cyan() : lab::orange()).withMultipliedBrightness(t);
                     next.setPixelAt(col,row,colour);
                 }
             }
             if(!cancelled) {
                 std::lock_guard<std::mutex> guard(lock);
-                if(version==serial) { ready=next; readySettings=s; ++completion; }
+                ready=next; readySettings=s; ++completion;
                 processed=version;
             }
         }
@@ -139,7 +139,18 @@ public:
         addAndMakeVisible(view); addAndMakeVisible(info);
         info.setMultiLine(true); info.setReadOnly(true); info.setScrollbarsShown(true);
         info.setFont(juce::Font(juce::FontOptions(11.f)));
-        setSize(1200,1020); startTimerHz(8); timerCallback();
+        flightMode.addItemList({"OFF","MATH FLIGHT"},1);rate.addItemList({"4 bars","8 bars","16 bars"},1);depth.addItemList({"OFF","SUBTLE (1)","LOW (2)"},1);direction.addItemList({"Zoom In","Zoom Out"},1);
+        const char* comboIds[]={"flightMode","evolutionRate","mutationDepth","zoomDirection"};
+        juce::ComboBox* combos[]={&flightMode,&rate,&depth,&direction};
+        for(int i=0;i<4;++i){addAndMakeVisible(*combos[i]);flightCombos[size_t(i)]=std::make_unique<ComboAttachment>(p.state,comboIds[i],*combos[i]);}
+        const char* toggleIds[]={"flightEnable","freeze","hold","evolve","capture","recall","patternReset","flightReset"};
+        const char* toggleNames[]={"FLIGHT","FREEZE","HOLD","EVOLVE","CAPTURE","RECALL","RESET A","FLIGHT RESET"};
+        for(int i=0;i<8;++i){auto& button=flightButtons[size_t(i)];button.setButtonText(toggleNames[i]);button.setComponentID(toggleIds[i]);addAndMakeVisible(button);flightToggles[size_t(i)]=std::make_unique<ButtonAttachment>(p.state,toggleIds[i],button);}
+        const char* sliderIds[]={"flightSpeed","driftX","driftY"};
+        for(int i=0;i<3;++i){auto& slider=flightSliders[size_t(i)];slider.setSliderStyle(juce::Slider::LinearHorizontal);slider.setTextBoxStyle(juce::Slider::TextBoxRight,false,46,22);slider.setTooltip(sliderIds[i]);addAndMakeVisible(slider);flightSliderBindings[size_t(i)]=std::make_unique<SliderAttachment>(p.state,sliderIds[i],slider);}
+        prepare.setButtonText("PREPARE");addAndMakeVisible(prepare);
+        prepare.onClick=[this]{prepareMessage=processor.prepareFlight() ? "Flight plan prepared" : "Stop transport before Prepare";};
+        setSize(1200,1020); startTimerHz(20); timerCallback();
     }
     ~LabEditor() override { stopTimer(); details.reset(); setLookAndFeel(nullptr); }
     void paint(juce::Graphics& g) override {
@@ -147,7 +158,7 @@ public:
         g.setColour(lab::cyan().withAlpha(.4f)); g.drawLine(16,62,1184,62,1);
         g.setColour(lab::text()); g.setFont(24.f);
         g.drawText("F R A C T A L   L A B  |  M A N D E L B R O T",24,14,950,40,juce::Justification::left);
-        g.setFont(14.f); g.drawText("v0.2b GUI",1050,14,130,40,juce::Justification::right);
+        g.setFont(14.f); g.drawText("v0.3 PROTOTYPE",1050,14,130,40,juce::Justification::right);
         for(auto r : {juce::Rectangle<int>(16,70,310,370),juce::Rectangle<int>(850,70,334,370),juce::Rectangle<int>(16,448,1168,242),juce::Rectangle<int>(16,700,1168,170)}) {
             lab::panelFrame(g,r.toFloat());
         }
@@ -162,6 +173,8 @@ public:
         g.drawText("NAVIGATION",30,78,260,24,juce::Justification::left);
         g.drawText("MUSICAL CONTROL",866,78,300,24,juce::Justification::left);
         g.drawText("16 STEPS  |  degree / CTRL velocity  |  host MIDI assignments",30,704,1120,22,juce::Justification::left);
+        lab::panelFrame(g,juce::Rectangle<float>(16,872,1168,140));
+        g.setColour(lab::cyan());g.drawText("FRACTAL FLIGHT / CONTROLLED EVOLUTION",28,874,900,22,juce::Justification::left);
     }
     void resized() override {
         auto dial=[this](int i,int x,int y,int w,int h) { auto& d=dials[size_t(i)]; d.label.setBounds(x,y,w,20); d.slider.setBounds(x,y+20,w,h-20); };
@@ -176,17 +189,22 @@ public:
             int x=28+i*72; auto& s=steps[size_t(i)]; s.on.setBounds(x,730,65,24);
             s.degree.setBounds(x,755,34,103); s.velocity.setBounds(x+34,755,34,103);
         }
-        run.setBounds(22,884,85,28); panic.setBounds(110,884,140,28); advanced.setBounds(260,884,240,28);
-        info.setBounds(22,920,1155,90);
+        flightButtons[0].setBounds(26,900,88,28);flightMode.setBounds(120,900,120,28);flightSliders[0].setBounds(246,900,130,28);
+        flightButtons[1].setBounds(382,900,82,28);rate.setBounds(470,900,98,28);depth.setBounds(574,900,132,28);
+        flightButtons[2].setBounds(712,900,72,28);flightButtons[3].setBounds(790,900,82,28);flightButtons[4].setBounds(878,900,86,28);flightButtons[5].setBounds(970,900,86,28);prepare.setBounds(1062,900,108,28);
+        flightSliders[1].setBounds(28,938,130,28);flightSliders[2].setBounds(166,938,130,28);direction.setBounds(304,938,112,28);
+        flightButtons[7].setBounds(424,938,126,28);flightButtons[6].setBounds(558,938,100,28);run.setBounds(668,938,80,28);panic.setBounds(758,938,136,28);advanced.setBounds(904,938,266,28);
+        info.setBounds(24,976,1152,30);
     }
 private:
     void timerCallback() override {
-        const auto s=processor.settings();
+        const auto s=processor.previewSettings();
         if(!haveSettings || s.x!=last.x || s.y!=last.y || s.zoom!=last.zoom || s.radius!=last.radius || s.sampler!=last.sampler || s.iterations!=last.iterations) {
             view.request(s); last=s; haveSettings=true;
         }
         const auto text=processor.diagnostics();
-        const auto content="Applied audio pattern (independent atomic telemetry; preview uses current controls)\n"+text;
+        const auto c=processor.controls();
+        const auto content=juce::String(c.hold ? "HOLD" : (c.evolve ? "EVOLVE" : "LOCKED"))+" | X "+juce::String(s.x,6)+" Y "+juce::String(s.y,6)+" Zoom x"+juce::String(s.zoom,2)+" | "+juce::String(c.rate)+" bars | Next PPQ "+juce::String(processor.nextEvolutionBeat.load(),2)+" | Changed "+juce::String(processor.changedSteps.load())+" | "+prepareMessage+"\n"+text;
         if(info.getText()!=content) info.setText(content,false);
     }
     MandelbrotProcessor& processor;
@@ -202,6 +220,14 @@ private:
     std::unique_ptr<ComboAttachment> scaleBinding,modeBinding,samplerBinding,iterationBinding;
     std::unique_ptr<ButtonAttachment> runBinding,panicBinding;
     std::unique_ptr<juce::DocumentWindow> details;
+    std::array<juce::ToggleButton,8> flightButtons;
+    std::array<juce::Slider,3> flightSliders;
+    juce::ComboBox flightMode,rate,depth,direction;
+    juce::TextButton prepare;
+    std::array<std::unique_ptr<ButtonAttachment>,8> flightToggles;
+    std::array<std::unique_ptr<SliderAttachment>,3> flightSliderBindings;
+    std::array<std::unique_ptr<ComboAttachment>,4> flightCombos;
+    juce::String prepareMessage="Speed / Drift X / Drift Y: hover for label; origin edits require stopped Prepare";
     FractalView view;
     fractal::Settings last;
     bool haveSettings=false;

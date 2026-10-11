@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include "MemoryState.h"
 namespace {
 const char* ids[] {"run","mode","x","y","zoom","radius","sampler","iterations","pitchAmount","rhythmAmount","velocityAmount","root","scale","low","high","velocity","gate","panic","pitchSource","velocitySource","pitchSpan","velocitySpan","threshold","zoomExponent"};
 }
@@ -13,7 +14,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout MandelbrotProcessor::layout(
     auto choice=[&](const char* n,const char* label,juce::StringArray choices,int def){ p.add(std::make_unique<juce::AudioParameterChoice>(id(n),label,choices,def)); };
     p.add(std::make_unique<juce::AudioParameterBool>(id("run"),"Run",true));
     choice("mode","Mode (next cycle)",{"GEN","CTRL"},0);
-    number("x","X center",-2,1,-0.6f,0.000001f); number("y","Y center",-1.5f,1.5f,0,0.000001f);
+    number("x","X center",-2,1,-0.75f,0.000001f); number("y","Y center",-1.5f,1.5f,0.1f,0.000001f);
     number("zoom","Zoom multiplier",1,10,1); number("zoomExponent","Zoom exponent (10^n)",0,3,0);
     number("radius","Local radius",0,1,0.37f);
     choice("sampler","Contour sampling",{"Circle","Line"},0);
@@ -35,11 +36,22 @@ juce::AudioProcessorValueTreeState::ParameterLayout MandelbrotProcessor::layout(
         p.add(std::make_unique<juce::AudioParameterBool>(id("on"+suffix),"Step "+suffix+" On",true));
         p.add(std::make_unique<juce::AudioParameterInt>(id("vel"+suffix),"Step "+suffix+" Velocity",1,127,100));
     }
+    p.add(std::make_unique<juce::AudioParameterBool>(id("flightEnable"),"Flight On",false));
+    choice("flightMode","Flight Mode",{"OFF","MATH FLIGHT"},1);
+    number("flightSpeed","Flight Speed",0.05f,4,1);
+    choice("zoomDirection","Zoom Direction",{"In","Out"},0);
+    number("driftX","Drift X (prepare)",-1,1,.25f);
+    number("driftY","Drift Y (prepare)",-1,1,.1f);
+    for(auto name : {"freeze","capture","hold","recall","patternReset","flightReset"})
+        p.add(std::make_unique<juce::AudioParameterBool>(id(name),name,false));
+    p.add(std::make_unique<juce::AudioParameterBool>(id("evolve"),"Evolve",true));
+    choice("evolutionRate","Evolution Rate (bars)",{"4","8","16"},1);
+    choice("mutationDepth","Mutation Depth",{"OFF","SUBTLE (1)","LOW (2)"},1);
     return p;
 }
 MandelbrotProcessor::MandelbrotProcessor()
  : AudioProcessor(BusesProperties().withOutput("Silent Output",juce::AudioChannelSet::stereo(),true)),
-   state(*this,nullptr,"MandelbrotV02aState",layout()) {
+   state(*this,nullptr,"FractalLabV03State",layout()) {
     for(size_t i=0;i<global.size();++i) global[i]=state.getRawParameterValue(ids[i]);
     for(int i=0;i<16;++i) {
         const auto suffix=juce::String(i+1).paddedLeft('0',2);
@@ -48,6 +60,7 @@ MandelbrotProcessor::MandelbrotProcessor()
         mag[i].store(0); movement[i].store(0); contrast[i].store(0); escape[i].store(0);
         note[i].store(48); on[i].store(0); projected[i].store(0);
     }
+    prepareFlight();
 }
 fractal::Settings MandelbrotProcessor::settings() const noexcept {
     fractal::Settings s;
@@ -62,22 +75,64 @@ fractal::Settings MandelbrotProcessor::settings() const noexcept {
     for(int i=0;i<16;++i) { s.degrees[i]=int(degrees[i]->load()); s.velocities[i]=int(velocities[i]->load()); s.on[i]=enabled[i]->load()>0.5f; }
     return s;
 }
+fractal::EvolutionControls MandelbrotProcessor::controls() const noexcept {
+    auto v=[&](const char* id){return state.getRawParameterValue(id)->load();};
+    fractal::EvolutionControls c;
+    c.flight=v("flightEnable")>.5f && v("flightMode")>.5f; c.freeze=v("freeze")>.5f;
+    c.hold=v("hold")>.5f;c.evolve=v("evolve")>.5f;c.speed=fractal::bounded(v("flightSpeed"),.05,4,1);
+    c.rate=4<<std::clamp(int(v("evolutionRate")),0,2);c.depth=std::clamp(int(v("mutationDepth")),0,2);return c;
+}
+bool MandelbrotProcessor::prepareFlight(const fractal::Settings* origin,const fractal::FlightConfig* config) {
+    std::lock_guard<std::mutex> guard(preparationLock);
+    if(transportPlaying.load()) return false;
+    fractal::FlightConfig cfg;cfg.driftX=state.getRawParameterValue("driftX")->load();cfg.driftY=state.getRawParameterValue("driftY")->load();
+    cfg.direction=state.getRawParameterValue("zoomDirection")->load()<.5f ? 1 : -1;
+    if(config) cfg=*config;
+    const auto s=origin ? *origin : settings();const auto gen=++bankGeneration;
+    // Host setup / stopped GUI only. Actual orbit analysis runs on this joined preparation worker.
+    std::thread worker([&]{banks.prepare([&](fractal::FlightBank& b){b.build(s,cfg,gen);});});worker.join();
+    previews.publish(s);restart.store(true);return true;
+}
+void MandelbrotProcessor::prepareToPlay(double,int) { transportPlaying.store(false);restart.store(true); }
+fractal::Settings MandelbrotProcessor::previewSettings() const noexcept {
+    auto s=settings();previews.read([&](const fractal::Settings& p){s=p;});return s;
+}
 void MandelbrotProcessor::processBlock(juce::AudioBuffer<float>& audio,juce::MidiBuffer& midi) {
-    juce::ScopedNoDenormals noDenormals; audio.clear(); midi.clear();
+    juce::ScopedNoDenormals noDenormals;audio.clear();midi.clear();
     if(restart.exchange(false)) engine.requestReset();
-    auto* playhead=getPlayHead();
-    auto position=playhead ? playhead->getPosition() : juce::Optional<juce::AudioPlayHead::PositionInfo>{};
-    const bool valid=position && position->getPpqPosition() && position->getBpm();
-    engine.process(audio.getNumSamples(),getSampleRate(),valid && position->getIsPlaying(),
-        valid ? *position->getPpqPosition() : 0.0,valid ? *position->getBpm() : 120.0,settings(),
-        [&](bool isOn,int pitch,int velocity,int offset){
-            midi.addEvent(isOn ? juce::MidiMessage::noteOn(1,pitch,juce::uint8(velocity)) : juce::MidiMessage::noteOff(1,pitch),offset);
-        });
-    const auto& p=engine.pattern(); appliedGen.store(p.gen); validRange.store(p.validRange);
+    const bool restoring=restored.exchange(false);
+    if(restoring) restoredMemories.read([&](const fractal::MemoryState& m){evolution.restore(m);});
+    const char* commandIds[]={"capture","recall","patternReset","flightReset"};
+    for(int i=0;i<4;++i) {
+        bool down=state.getRawParameterValue(commandIds[i])->load()>.5f;
+        if(restoring) previousCommands[size_t(i)]=down;
+        if(down!=previousCommands[size_t(i)]) {
+            if(i==0) evolution.capture();if(i==1) evolution.recall();if(i==2) evolution.reset();if(i==3) evolution.flightResetPending=true;
+        }
+        previousCommands[size_t(i)]=down;
+    }
+    auto* playhead=getPlayHead();auto pos=playhead ? playhead->getPosition() : juce::Optional<juce::AudioPlayHead::PositionInfo>{};
+    bool valid=pos && pos->getPpqPosition() && pos->getBpm();
+    if(valid) valid=std::isfinite(*pos->getPpqPosition()) && std::abs(*pos->getPpqPosition())<=1e12 && std::isfinite(*pos->getBpm()) && *pos->getBpm()>0 && std::isfinite(getSampleRate()) && getSampleRate()>0;
+    if(valid && pos->getTimeSignature()) {auto ts=*pos->getTimeSignature();valid=ts.numerator==4 && ts.denominator==4;}
+    bool playing=valid && pos->getIsPlaying();double ppq=valid ? *pos->getPpqPosition() : 0;
+    transportPlaying.store(playing);hostBeat.store(ppq);
+    const auto s=settings();const auto c=controls();
+    auto emit=[&](bool on,int pitch,int velocity,int offset){midi.addEvent(on ? juce::MidiMessage::noteOn(1,pitch,juce::uint8(velocity)) : juce::MidiMessage::noteOff(1,pitch),offset);};
+    bool read=banks.read([&](const fractal::FlightBank& bank){
+        if(playing) evolution.clock.at(ppq,c);
+        engine.processPrepared(audio.getNumSamples(),getSampleRate(),playing,ppq,valid ? *pos->getBpm() : 120,s,emit,
+            [&](double beat){return evolution.cycle(beat,s,c,bank);});
+        if(playing) {const auto phase=evolution.clock.at(ppq+audio.getNumSamples()*(valid ? *pos->getBpm() : 120)/(60*getSampleRate()),c);previews.publish(bank.frame(phase).math);}
+        else previews.publish(bank.frame(c.flight ? evolution.clock.phase : 0).math);
+    });
+    if(!read) engine.processPrepared(audio.getNumSamples(),getSampleRate(),false,ppq,120,s,emit,[&](double){return engine.pattern();});
+    evolution.memory.phase=evolution.clock.phase;evolution.memory.clockBeat=evolution.clock.lastBeat;
+    memories.publish(evolution.memory);changedSteps.store(evolution.changed);nextEvolutionBeat.store(evolution.nextBeat);
+    const auto& p=engine.pattern();appliedGen.store(p.gen);validRange.store(p.validRange);
     for(int i=0;i<16;++i) {
-        const auto& f=p.features[i]; mag[i].store(float(f.magnitude)); movement[i].store(float(f.movement));
-        contrast[i].store(float(f.contrast)); escape[i].store(float(f.escapeIndex));
-        note[i].store(float(p.notes[i].pitch)); on[i].store(p.notes[i].on ? 1.0f : 0.0f); projected[i].store(p.notes[i].baseProjected ? 1.0f : 0.0f);
+        const auto& f=p.features[i];mag[i].store(float(f.magnitude));movement[i].store(float(f.movement));contrast[i].store(float(f.contrast));escape[i].store(float(f.escapeIndex));
+        note[i].store(float(p.notes[i].pitch));on[i].store(p.notes[i].on ? 1.f : 0.f);projected[i].store(p.notes[i].baseProjected ? 1.f : 0.f);
     }
 }
 juce::String MandelbrotProcessor::diagnostics() const {
@@ -88,14 +143,25 @@ juce::String MandelbrotProcessor::diagnostics() const {
 }
 juce::AudioProcessorEditor* MandelbrotProcessor::createEditor() { return new LabEditor(*this); }
 void MandelbrotProcessor::getStateInformation(juce::MemoryBlock& dest) {
-    auto tree=state.copyState(); tree.setProperty("schemaVersion",2,nullptr);
+    auto tree=state.copyState(); tree.setProperty("schemaVersion",3,nullptr);
+    fractal::MemoryState memory;memories.read([&](const fractal::MemoryState& m){memory=m;});
+    tree.addChild(fractal::saveMemory(memory),-1,nullptr);
+    banks.read([&](const fractal::FlightBank& b){
+        fractal::PatternState origin;origin.math=b.origin;auto plan=fractal::savePattern("PreparedPlan",origin);
+        plan.setProperty("driftX",b.config.driftX,nullptr);plan.setProperty("driftY",b.config.driftY,nullptr);plan.setProperty("direction",b.config.direction,nullptr);tree.addChild(plan,-1,nullptr);
+    });
     if(auto xml=tree.createXml()) copyXmlToBinary(*xml,dest);
 }
 void MandelbrotProcessor::setStateInformation(const void* data,int size) {
     if(auto xml=getXmlFromBinary(data,size)) if(xml->hasTagName(state.state.getType())) {
         auto tree=juce::ValueTree::fromXml(*xml);
-        if(int(tree.getProperty("schemaVersion",0))!=2) return;
-        state.replaceState(tree); // New state is applied at the next cycle, like other pattern edits.
+        if(int(tree.getProperty("schemaVersion",0))!=3) return;
+        auto memory=tree.getChildWithName("PatternMemory");
+        if(memory.isValid()) {auto restoredState=fractal::loadMemory(memory);restoredMemories.prepare([&](fractal::MemoryState& m){m=restoredState;});restored.store(true);tree.removeChild(memory,nullptr);}
+        auto plan=tree.getChildWithName("PreparedPlan");auto origin=fractal::loadPattern(plan).math;
+        fractal::FlightConfig config;config.driftX=fractal::bounded(double(plan.getProperty("driftX",.25)),-1,1,.25);config.driftY=fractal::bounded(double(plan.getProperty("driftY",.1)),-1,1,.1);config.direction=int(plan.getProperty("direction",1))<0 ? -1 : 1;
+        if(plan.isValid()) tree.removeChild(plan,nullptr);
+        state.replaceState(tree);if(plan.isValid()) prepareFlight(&origin,&config);else prepareFlight();
     }
 }
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() { return new MandelbrotProcessor(); }
