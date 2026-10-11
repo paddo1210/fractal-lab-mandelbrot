@@ -2,6 +2,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <cstring>
+#include <vector>
 void check(bool ok,const char* message){if(!ok) throw std::runtime_error(message);}
 void set(MandelbrotProcessor& p,const char* id,float v) {
     auto* param=p.state.getParameter(id); check(param!=nullptr,"parameter exists");
@@ -13,6 +14,15 @@ struct Playhead final : juce::AudioPlayHead {
         PositionInfo p; p.setPpqPosition(ppq); p.setBpm(bpm); p.setIsPlaying(playing); return p;
     }
 };
+std::vector<std::array<int64_t,4>> renderProcessor(const juce::MemoryBlock& saved,int block,bool offline) {
+    MandelbrotProcessor p;p.setStateInformation(saved.getData(),int(saved.getSize()));p.setRateAndBufferSizeDetails(48000,block);p.setNonRealtime(offline);p.prepareToPlay(48000,block);
+    Playhead head;p.setPlayHead(&head);std::vector<std::array<int64_t,4>> events;
+    for(int start=0;start<128*24000;start+=block) {
+        int count=std::min(block,128*24000-start);head.ppq=start/24000.;juce::AudioBuffer<float> audio(2,count);juce::MidiBuffer midi;p.processBlock(audio,midi);
+        for(auto e:midi){check(e.numBytes==3,"three-byte note MIDI");events.push_back({start+e.samplePosition,e.data[0],e.data[1],e.data[2]});}
+    }
+    return events;
+}
 int main() {
     juce::ScopedJuceInitialiser_GUI init;
     try {
@@ -20,13 +30,16 @@ int main() {
         check(first.acceptsMidi() && first.producesMidi(),"Live MIDI bus flags");
         set(first,"mode",1); set(first,"x",-.75f); set(first,"y",.1f); set(first,"zoomExponent",2);
         set(first,"pitchAmount",.77f); set(first,"rhythmAmount",0); set(first,"threshold",.3f); set(first,"velocityAmount",.4f);
+        set(first,"flightEnable",1);
         set(first,"step02",5); set(first,"vel02",73); set(first,"on03",0);
         first.prepareFlight();
         juce::MemoryBlock state; first.getStateInformation(state); second.setStateInformation(state.getData(),int(state.getSize()));
         auto a=first.state.copyState(),b=second.state.copyState();
         a.removeProperty("schemaVersion",nullptr); b.removeProperty("schemaVersion",nullptr);
         check(a.isEquivalentTo(b),"all parameter state roundtrip");
+        check(renderProcessor(state,127,false)==renderProcessor(state,4096,true),"actual MATH FLIGHT processor: 32 bars, realtime/offline flags and block sizes produce identical MIDI");
         Playhead h1,h2; first.setPlayHead(&h1); second.setPlayHead(&h2);
+        first.setNonRealtime(false);second.setNonRealtime(true);
         first.setRateAndBufferSizeDetails(48000,512); second.setRateAndBufferSizeDetails(48000,512);
         first.prepareToPlay(48000,512); second.prepareToPlay(48000,512);
         int noteOns=0;
@@ -46,7 +59,8 @@ int main() {
         restored.setRateAndBufferSizeDetails(48000,512);restored.setPlayHead(&h1);restored.prepareToPlay(48000,512);restored.processBlock(captureAudio,captureMidi);
         auto saved=first.memoryState().captured,loaded=restored.memoryState().captured;
         check(restored.memoryState().hasCaptured,"captured memory survives preset");
-        for(int i=0;i<16;++i) {check(!fractal::stepDifferent(saved.pattern.notes[i],loaded.pattern.notes[i]),"saved MIDI pattern exact");check(saved.points[i].x==loaded.points[i].x && saved.points[i].y==loaded.points[i].y,"saved mathematical sample points exact");}
+        for(int i=0;i<16;++i) {check(!fractal::stepDifferent(saved.pattern.notes[i],loaded.pattern.notes[i]),"saved MIDI pattern exact");check(saved.points[i].x==loaded.points[i].x && saved.points[i].y==loaded.points[i].y,"saved mathematical sample points exact");check(saved.pattern.features[i].magnitude==loaded.pattern.features[i].magnitude && saved.pattern.features[i].movement==loaded.pattern.features[i].movement && saved.pattern.features[i].contrast==loaded.pattern.features[i].contrast,"saved ranking features exact");}
+        check(saved.math.x==loaded.math.x && saved.math.y==loaded.math.y && saved.math.zoom==loaded.math.zoom,"saved navigation exact");
         const auto before=second.state.copyState(); const char garbage[]="not a preset";
         second.setStateInformation(garbage,sizeof(garbage)); check(before.isEquivalentTo(second.state.copyState()),"reject malformed preset");
         set(second,"panic",1); juce::AudioBuffer<float> audio(2,512); juce::MidiBuffer midi;

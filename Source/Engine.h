@@ -91,13 +91,13 @@ struct Pattern {
 };
 inline Pattern mapFeatures(Settings raw,const std::array<Feature,16>& features) noexcept {
     const auto s=sanitize(raw); Pattern p; p.gen=s.gen; p.gate=s.gate;
+    p.features=features;
+    for(int i=0;i<steps;++i) p.features[i].contrast=(s.sampler==1 && i==0) ? 0 : std::min(std::abs(p.features[i].magnitude-p.features[(i+15)%16].magnitude)/0.05,1.0);
     std::array<int,128> allowed {}; int count=0;
     for(int note=s.low;note<=s.high;++note) if(inScale(note,s.root,s.scale)) allowed[count++]=note;
     if(count==0) { p.validRange=false; return p; }
-    p.features=features;
     for(int i=0;i<steps;++i) {
         auto& f=p.features[i];
-        f.contrast=(s.sampler==1 && i==0) ? 0 : std::min(std::abs(f.magnitude-p.features[(i+15)%16].magnitude)/0.05,1.0);
         auto& note=p.notes[i];
         const int base=s.gen ? s.root : scalePitch(s.root,s.scale,s.degrees[i]);
         int nearest=0;

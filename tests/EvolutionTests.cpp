@@ -20,6 +20,8 @@ std::vector<Event> render(const FlightBank& bank,int block,bool offline) {
 int main() {
  try {
     auto bank=std::make_unique<FlightBank>();Settings s;s.x=-.75;s.y=.1;bank->build(s,{},1);
+    Settings invalid=s;invalid.low=invalid.high=61;invalid.root=60;invalid.scale=1;auto noNote=makePattern(invalid);
+    check(!noNote.validRange && noNote.features[0].observed>0,"Mathematical features remain authentic even with empty musical range");
     EvolutionControls c;c.flight=true;
     Evolution hold;hold.cycle(0,s,c,*bank);hold.capture();c.hold=true;
     const auto captured=hold.memory.captured.pattern;
@@ -37,6 +39,8 @@ int main() {
     for(int n:active) check(n==0,"H: no hanging note after stop");
     FlightClock clock;clock.at(0,c);double p=clock.at(4,c);c.freeze=true;p=clock.at(8,c);
     check(clock.at(40,c)==p,"F: frozen phase holds");
+    FlightClock stoppedFlight;EvolutionControls stopControls;stopControls.flight=true;stoppedFlight.at(0,stopControls);stoppedFlight.at(4,stopControls);stopControls.flight=false;
+    double stoppedPhase=stoppedFlight.at(8,stopControls);check(stoppedFlight.at(16,stopControls)==stoppedPhase,"Flight stop holds current position");
     auto before=evolving.memory.current.pattern;for(int bar=33;bar<=64;++bar) check(same(evolving.cycle(bar*4.,s,c,*bank),before),"F: freeze does not evolve notes");
     c.freeze=false;c.depth=0;for(int bar=65;bar<=80;++bar) check(same(evolving.cycle(bar*4.,s,c,*bank),before),"OFF mutation holds");
     evolving.capture();auto saved=evolving.memory.captured.pattern;c.depth=2;

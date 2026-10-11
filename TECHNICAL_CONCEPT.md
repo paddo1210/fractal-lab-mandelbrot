@@ -26,6 +26,10 @@ CAPTURE speichert das tatsächlich angewandte Pattern; HOLD spielt den Capture-B
 
 Der Speicher enthält tatsächliche MIDI-Tupel, Gate, die berechneten Merkmale, ursprüngliche/mutierte Abtastpunkte sowie mathematische und Mapping-Settings. Ein durch Mutation zusammengesetztes Pattern stammt nicht zwangsläufig aus einer einzigen Fraktalposition; seine per-Step-Punkte bleiben separat erhalten. „Math“ beschreibt die zuletzt geprüfte Kandidatenkonfiguration, nicht einen Beweis für einen einzigen Gesamtorbit des gespeicherten Motivs. Der vorbereitete Ursprung und die Driftkonfiguration werden unabhängig von eventuell noch nicht vorbereiteten Regleränderungen gespeichert. MIDI-Recall ist implementiert; separate Übernahme des Captures als neue Navigationsbasis gehört noch nicht zum Prototyp.
 
+Double-Werte des Speichers werden als explizite acht Byte in Base64 abgelegt, statt sich auf verlustbehaftete XML-Zahlenformatierung zu verlassen. Windows-x64/IEEE754-Double ist das validierte Zielformat. Auch Phase, letzte Hostposition, Speed, Bewegungszustand und Evolution-Intervall werden gespeichert. Flight Enable OFF hält im MATH-Modus die aktuelle Position; der eigentliche Mode OFF zeigt den manuellen vorbereiteten Ursprung.
+
+Die laufende Phase wird als affine Funktion von PPQ und einem gespeicherten Kontrollanker ausgewertet, nicht pro Audioblock numerisch aufsummiert. Evolution-Grenzen werden auf ihr exaktes Viertelnotenraster kanonisiert. Dadurch dürfen winzige Rundungsdifferenzen verschiedener Blockgrößen nicht einen benachbarten Cache-Eintrag wählen. Ein zusätzlicher Processor-Test vergleicht 32 Takte MATH FLIGHT mit 127er Echtzeit- und 4096er nonRealtime-Blöcken.
+
 Feste Doppelbuffer mit atomaren Leserschutz-Zählern verbinden Vorbereitung, Audio und GUI. Audio wartet nicht auf Mutex/Worker und allokiert keine Bank. GUI-Bilder haben eine eigene Worker-Pipeline; sie beenden ein Bild trotz neuer Anfragen, damit schnelle Bewegung das Rendering nicht dauerhaft verhungern lässt. Veraltete vollständige Bilder sind zulässige visuelle Latenz; MIDI hängt nicht von ihnen ab.
 
 ## Bewusste Grenzen

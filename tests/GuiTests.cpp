@@ -13,6 +13,10 @@ int main() {
     for(int repeat=0;repeat<3;++repeat) {
         std::unique_ptr<juce::AudioProcessorEditor> editor(p.createEditor());
         check(editor && editor->getWidth()==1200);
+        auto* flight=dynamic_cast<juce::ToggleButton*>(find(*editor,"flightEnable"));auto* freeze=dynamic_cast<juce::ToggleButton*>(find(*editor,"freeze"));
+        auto* rate=dynamic_cast<juce::ComboBox*>(find(*editor,"evolutionRate"));auto* depth=dynamic_cast<juce::ComboBox*>(find(*editor,"mutationDepth"));auto* speed=dynamic_cast<juce::Slider*>(find(*editor,"flightSpeed"));check(flight && freeze && rate && depth && speed);
+        flight->setToggleState(true,juce::sendNotificationSync);freeze->setToggleState(true,juce::sendNotificationSync);rate->setSelectedId(1,juce::sendNotificationSync);depth->setSelectedId(3,juce::sendNotificationSync);speed->setValue(2,juce::sendNotificationSync);
+        auto controls=p.controls();check(controls.flight && controls.freeze && controls.rate==4 && controls.depth==2 && controls.speed==2);
         auto* x=dynamic_cast<juce::Slider*>(find(*editor,"x")); check(x);
         auto* parameter=p.state.getParameter("x");
         parameter->setValueNotifyingHost(parameter->convertTo0to1(-.75f));

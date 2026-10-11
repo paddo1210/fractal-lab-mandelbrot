@@ -29,6 +29,10 @@ public:
     fractal::MemoryState memoryState() const noexcept {fractal::MemoryState m;memories.read([&](const fractal::MemoryState& value){m=value;});return m;}
     fractal::Settings previewSettings() const noexcept;
     fractal::EvolutionControls controls() const noexcept;
+    bool flightNeedsPrepare() const noexcept {
+        const auto s=settings();bool dirty=true;
+        banks.read([&](const fractal::FlightBank& b){dirty=s.x!=b.origin.x || s.y!=b.origin.y || s.zoom!=b.origin.zoom || s.radius!=b.origin.radius || s.sampler!=b.origin.sampler || s.iterations!=b.origin.iterations || state.getRawParameterValue("driftX")->load()!=b.config.driftX || state.getRawParameterValue("driftY")->load()!=b.config.driftY || (state.getRawParameterValue("zoomDirection")->load()<.5f ? 1 : -1)!=b.config.direction;});return dirty;
+    }
     std::atomic<bool> transportPlaying {false};
     std::atomic<int> changedSteps {0};
     std::atomic<double> nextEvolutionBeat {0}, hostBeat {0};

@@ -64,22 +64,28 @@ struct FlightBank {
     }
 };
 struct EvolutionControls {
-    bool flight=false,freeze=false,hold=false,evolve=true;
+    bool flight=false,mathMode=true,freeze=false,hold=false,evolve=true;
     double speed=1;
     int rate=8,depth=1;
 };
 struct FlightClock {
-    double phase=0,lastBeat=0,lastSpeed=1;
+    double phase=0,lastBeat=0,lastSpeed=1,anchorBeat=0,anchorPhase=0;
     bool initialized=false,lastMoving=false;
     double at(double beat,const EvolutionControls& c) noexcept {
-        if(!initialized) { phase=beat*c.speed/flightBeats; initialized=true; }
-        else if(beat<lastBeat-1e-7 || beat-lastBeat>4.0001) {
-            if(!c.freeze) phase=beat*c.speed/flightBeats;
-        } else if(lastMoving) phase+=(beat-lastBeat)*lastSpeed/flightBeats;
-        lastBeat=beat; lastSpeed=c.speed; lastMoving=c.flight && !c.freeze;
-        phase-=std::floor(phase); return c.flight ? phase : 0;
+        const bool moving=c.flight && !c.freeze;
+        if(!initialized) {
+            phase=c.flight ? beat*c.speed/flightBeats : 0;anchorPhase=phase;anchorBeat=beat;initialized=true;
+        } else if(beat<lastBeat-1e-7 || beat-lastBeat>4.0001) {
+            if(moving) phase=beat*c.speed/flightBeats;
+            anchorBeat=beat;anchorPhase=phase;
+        } else {
+            if(lastMoving) phase=anchorPhase+(beat-anchorBeat)*lastSpeed/flightBeats;
+            if(moving!=lastMoving || c.speed!=lastSpeed) {anchorPhase=phase;anchorBeat=beat;}
+        }
+        lastBeat=beat;lastSpeed=c.speed;lastMoving=moving;
+        phase-=std::floor(phase); return c.mathMode ? phase : 0;
     }
-    void reset(double beat) noexcept { phase=0;lastBeat=beat;initialized=true; }
+    void reset(double beat) noexcept { phase=anchorPhase=0;lastBeat=anchorBeat=beat;initialized=true; }
 };
 struct PatternState {
     Pattern pattern;
@@ -116,7 +122,7 @@ inline int mutate(PatternState& current,const PatternState& candidate,int maximu
     }
     current.math=candidate.math; return changed;
 }
-struct MemoryState { PatternState current,original,captured; bool hasCaptured=false,valid=false; double phase=0,clockBeat=0; };
+struct MemoryState { PatternState current,original,captured; bool hasCaptured=false,valid=false,clockMoving=false; double phase=0,clockBeat=0,clockSpeed=1,anchorBeat=0,anchorPhase=0; int64_t evolutionInterval=std::numeric_limits<int64_t>::min(); };
 class Evolution {
 public:
     MemoryState memory;
@@ -131,12 +137,15 @@ public:
     }
     void recall() noexcept { recallPending=true; }
     void reset() noexcept { resetPending=true; }
-    void restore(MemoryState s) noexcept { memory=s;initialized=s.valid;restoredState=s.valid;clock.phase=s.phase;clock.lastBeat=s.clockBeat;clock.initialized=s.valid; }
+    void restore(MemoryState s) noexcept { memory=s;initialized=s.valid;restoredState=s.valid;clock.phase=s.phase;clock.lastBeat=s.clockBeat;clock.lastSpeed=s.clockSpeed;clock.lastMoving=s.clockMoving;clock.anchorBeat=s.anchorBeat;clock.anchorPhase=s.anchorPhase;clock.initialized=s.valid;previousBeat=s.clockBeat;lastInterval=s.evolutionInterval; }
     const Pattern& cycle(double beat,Settings musical,const EvolutionControls& c,const FlightBank& bank) noexcept {
+        const double grid=std::round(beat*4)/4;
+        if(std::abs(beat-grid)<1e-7) beat=grid;
         if(!initialized || generation!=bank.generation) {
-            if(!restoredState) memory.current=memory.original=candidateState(bank.frames[0],musical);
+            const bool preserve=restoredState;
+            if(!preserve) memory.current=memory.original=candidateState(bank.frames[0],musical);
             restoredState=false;memory.valid=true;
-            generation=bank.generation; initialized=true; lastInterval=std::numeric_limits<int64_t>::min();
+            generation=bank.generation; initialized=true; if(!preserve) lastInterval=std::numeric_limits<int64_t>::min();
         }
         if(beat<previousBeat-1e-7 || beat-previousBeat>4.0001) memory.current=memory.hasCaptured ? memory.captured : memory.original;
         previousBeat=beat;
@@ -157,6 +166,7 @@ public:
             if(c.depth>0) memory.current.pattern.gate=candidate.pattern.gate;
         }
         if(boundary) lastInterval=interval;
+        memory.evolutionInterval=lastInterval;
         return memory.current.pattern;
     }
 private:

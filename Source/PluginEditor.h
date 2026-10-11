@@ -30,7 +30,7 @@ public:
             g.drawText(juce::String(i+1),int(x+5),int(y-10),24,18,juce::Justification::left);
         }
         g.setColour(juce::Colours::white);
-        g.drawText("PREVIEW  X "+juce::String(displayed.x,6)+"  Y "+juce::String(displayed.y,6)
+        g.drawText("PREVIEW  X "+juce::String(displayed.x,9)+"  Y "+juce::String(displayed.y,9)
             +"  Zoom x"+juce::String(displayed.zoom,2)+"  N="+juce::String(displayed.iterations)
             +"  black = unresolved at N",8,4,getWidth()-16,20,juce::Justification::left);
     }
@@ -142,12 +142,12 @@ public:
         flightMode.addItemList({"OFF","MATH FLIGHT"},1);rate.addItemList({"4 bars","8 bars","16 bars"},1);depth.addItemList({"OFF","SUBTLE (1)","LOW (2)"},1);direction.addItemList({"Zoom In","Zoom Out"},1);
         const char* comboIds[]={"flightMode","evolutionRate","mutationDepth","zoomDirection"};
         juce::ComboBox* combos[]={&flightMode,&rate,&depth,&direction};
-        for(int i=0;i<4;++i){addAndMakeVisible(*combos[i]);flightCombos[size_t(i)]=std::make_unique<ComboAttachment>(p.state,comboIds[i],*combos[i]);}
+        for(int i=0;i<4;++i){combos[i]->setComponentID(comboIds[i]);addAndMakeVisible(*combos[i]);flightCombos[size_t(i)]=std::make_unique<ComboAttachment>(p.state,comboIds[i],*combos[i]);}
         const char* toggleIds[]={"flightEnable","freeze","hold","evolve","capture","recall","patternReset","flightReset"};
         const char* toggleNames[]={"FLIGHT","FREEZE","HOLD","EVOLVE","CAPTURE","RECALL","RESET A","FLIGHT RESET"};
         for(int i=0;i<8;++i){auto& button=flightButtons[size_t(i)];button.setButtonText(toggleNames[i]);button.setComponentID(toggleIds[i]);addAndMakeVisible(button);flightToggles[size_t(i)]=std::make_unique<ButtonAttachment>(p.state,toggleIds[i],button);}
         const char* sliderIds[]={"flightSpeed","driftX","driftY"};
-        for(int i=0;i<3;++i){auto& slider=flightSliders[size_t(i)];slider.setSliderStyle(juce::Slider::LinearHorizontal);slider.setTextBoxStyle(juce::Slider::TextBoxRight,false,46,22);slider.setTooltip(sliderIds[i]);addAndMakeVisible(slider);flightSliderBindings[size_t(i)]=std::make_unique<SliderAttachment>(p.state,sliderIds[i],slider);}
+        for(int i=0;i<3;++i){auto& slider=flightSliders[size_t(i)];slider.setComponentID(sliderIds[i]);slider.setSliderStyle(juce::Slider::LinearHorizontal);slider.setTextBoxStyle(juce::Slider::TextBoxRight,false,46,22);slider.setTooltip(sliderIds[i]);addAndMakeVisible(slider);flightSliderBindings[size_t(i)]=std::make_unique<SliderAttachment>(p.state,sliderIds[i],slider);}
         prepare.setButtonText("PREPARE");addAndMakeVisible(prepare);
         prepare.onClick=[this]{prepareMessage=processor.prepareFlight() ? "Flight plan prepared" : "Stop transport before Prepare";};
         setSize(1200,1020); startTimerHz(20); timerCallback();
@@ -204,7 +204,8 @@ private:
         }
         const auto text=processor.diagnostics();
         const auto c=processor.controls();
-        const auto content=juce::String(c.hold ? "HOLD" : (c.evolve ? "EVOLVE" : "LOCKED"))+" | X "+juce::String(s.x,6)+" Y "+juce::String(s.y,6)+" Zoom x"+juce::String(s.zoom,2)+" | "+juce::String(c.rate)+" bars | Next PPQ "+juce::String(processor.nextEvolutionBeat.load(),2)+" | Changed "+juce::String(processor.changedSteps.load())+" | "+prepareMessage+"\n"+text;
+        const auto preparation=processor.flightNeedsPrepare() ? juce::String("POSITION CHANGED: STOP + PREPARE") : prepareMessage;
+        const auto content=juce::String(c.hold ? "HOLD / A" : (c.evolve ? "EVOLVE / CURRENT" : "LOCKED"))+" | X "+juce::String(s.x,9)+" Y "+juce::String(s.y,9)+" Zoom x"+juce::String(s.zoom,2)+" | "+juce::String(c.rate)+" bars | Next PPQ "+juce::String(processor.nextEvolutionBeat.load(),2)+" | Changed "+juce::String(processor.changedSteps.load())+" | "+preparation+"\n"+text;
         if(info.getText()!=content) info.setText(content,false);
     }
     MandelbrotProcessor& processor;

@@ -13,7 +13,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout MandelbrotProcessor::layout(
     auto integer=[&](const char* n,const char* label,int lo,int hi,int def){ p.add(std::make_unique<juce::AudioParameterInt>(id(n),label,lo,hi,def)); };
     auto choice=[&](const char* n,const char* label,juce::StringArray choices,int def){ p.add(std::make_unique<juce::AudioParameterChoice>(id(n),label,choices,def)); };
     p.add(std::make_unique<juce::AudioParameterBool>(id("run"),"Run",true));
-    choice("mode","Mode (next cycle)",{"GEN","CTRL"},0);
+    choice("mode","Mapping mode (next evolution)",{"GEN","CTRL"},0);
     number("x","X center",-2,1,-0.75f,0.000001f); number("y","Y center",-1.5f,1.5f,0.1f,0.000001f);
     number("zoom","Zoom multiplier",1,10,1); number("zoomExponent","Zoom exponent (10^n)",0,3,0);
     number("radius","Local radius",0,1,0.37f);
@@ -78,7 +78,7 @@ fractal::Settings MandelbrotProcessor::settings() const noexcept {
 fractal::EvolutionControls MandelbrotProcessor::controls() const noexcept {
     auto v=[&](const char* id){return state.getRawParameterValue(id)->load();};
     fractal::EvolutionControls c;
-    c.flight=v("flightEnable")>.5f && v("flightMode")>.5f; c.freeze=v("freeze")>.5f;
+    c.mathMode=v("flightMode")>.5f;c.flight=v("flightEnable")>.5f && c.mathMode; c.freeze=v("freeze")>.5f;
     c.hold=v("hold")>.5f;c.evolve=v("evolve")>.5f;c.speed=fractal::bounded(v("flightSpeed"),.05,4,1);
     c.rate=4<<std::clamp(int(v("evolutionRate")),0,2);c.depth=std::clamp(int(v("mutationDepth")),0,2);return c;
 }
@@ -124,10 +124,12 @@ void MandelbrotProcessor::processBlock(juce::AudioBuffer<float>& audio,juce::Mid
         engine.processPrepared(audio.getNumSamples(),getSampleRate(),playing,ppq,valid ? *pos->getBpm() : 120,s,emit,
             [&](double beat){return evolution.cycle(beat,s,c,bank);});
         if(playing) {const auto phase=evolution.clock.at(ppq+audio.getNumSamples()*(valid ? *pos->getBpm() : 120)/(60*getSampleRate()),c);previews.publish(bank.frame(phase).math);}
-        else previews.publish(bank.frame(c.flight ? evolution.clock.phase : 0).math);
+        else previews.publish(bank.frame(c.mathMode ? evolution.clock.phase : 0).math);
     });
     if(!read) engine.processPrepared(audio.getNumSamples(),getSampleRate(),false,ppq,120,s,emit,[&](double){return engine.pattern();});
     evolution.memory.phase=evolution.clock.phase;evolution.memory.clockBeat=evolution.clock.lastBeat;
+    evolution.memory.clockSpeed=evolution.clock.lastSpeed;evolution.memory.clockMoving=evolution.clock.lastMoving;
+    evolution.memory.anchorBeat=evolution.clock.anchorBeat;evolution.memory.anchorPhase=evolution.clock.anchorPhase;
     memories.publish(evolution.memory);changedSteps.store(evolution.changed);nextEvolutionBeat.store(evolution.nextBeat);
     const auto& p=engine.pattern();appliedGen.store(p.gen);validRange.store(p.validRange);
     for(int i=0;i<16;++i) {
@@ -148,7 +150,7 @@ void MandelbrotProcessor::getStateInformation(juce::MemoryBlock& dest) {
     tree.addChild(fractal::saveMemory(memory),-1,nullptr);
     banks.read([&](const fractal::FlightBank& b){
         fractal::PatternState origin;origin.math=b.origin;auto plan=fractal::savePattern("PreparedPlan",origin);
-        plan.setProperty("driftX",b.config.driftX,nullptr);plan.setProperty("driftY",b.config.driftY,nullptr);plan.setProperty("direction",b.config.direction,nullptr);tree.addChild(plan,-1,nullptr);
+        fractal::saveDouble(plan,"driftX",b.config.driftX);fractal::saveDouble(plan,"driftY",b.config.driftY);plan.setProperty("direction",b.config.direction,nullptr);tree.addChild(plan,-1,nullptr);
     });
     if(auto xml=tree.createXml()) copyXmlToBinary(*xml,dest);
 }
@@ -159,7 +161,7 @@ void MandelbrotProcessor::setStateInformation(const void* data,int size) {
         auto memory=tree.getChildWithName("PatternMemory");
         if(memory.isValid()) {auto restoredState=fractal::loadMemory(memory);restoredMemories.prepare([&](fractal::MemoryState& m){m=restoredState;});restored.store(true);tree.removeChild(memory,nullptr);}
         auto plan=tree.getChildWithName("PreparedPlan");auto origin=fractal::loadPattern(plan).math;
-        fractal::FlightConfig config;config.driftX=fractal::bounded(double(plan.getProperty("driftX",.25)),-1,1,.25);config.driftY=fractal::bounded(double(plan.getProperty("driftY",.1)),-1,1,.1);config.direction=int(plan.getProperty("direction",1))<0 ? -1 : 1;
+        fractal::FlightConfig config;config.driftX=fractal::bounded(fractal::loadDouble(plan,"driftX",.25),-1,1,.25);config.driftY=fractal::bounded(fractal::loadDouble(plan,"driftY",.1),-1,1,.1);config.direction=int(plan.getProperty("direction",1))<0 ? -1 : 1;
         if(plan.isValid()) tree.removeChild(plan,nullptr);
         state.replaceState(tree);if(plan.isValid()) prepareFlight(&origin,&config);else prepareFlight();
     }
