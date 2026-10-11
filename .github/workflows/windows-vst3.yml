@@ -1,8 +1,8 @@
-name: Windows VST3
+name: Windows VST3 v0.3
 on:
   push:
-    branches: [main]
-    paths: ['Source/**', 'tests/**', 'Assets/**', 'CMakeLists.txt', 'FractalLab-v02b-source.zip', '.github/workflows/windows-vst3.yml']
+    branches: [v03-prototype]
+    paths: ['Source/**', 'tests/**', 'Assets/**', 'CMakeLists.txt', 'FractalLab-v03-source.zip', '.github/workflows/windows-vst3.yml']
   workflow_dispatch:
 permissions:
   contents: write
@@ -15,12 +15,12 @@ jobs:
       - name: Import uploaded source archive
         shell: pwsh
         run: |
-          if (!(Test-Path CMakeLists.txt)) {
-            Expand-Archive -LiteralPath FractalLab-v02b-source.zip -DestinationPath source-import
-            Get-ChildItem source-import/FractalLab-v02b -Force | Where-Object Name -ne '.github' | Copy-Item -Destination . -Recurse
+          if (!(Test-Path Source/Evolution.h)) {
+            Expand-Archive -LiteralPath FractalLab-v03-source.zip -DestinationPath source-import
+            Get-ChildItem source-import/FractalLab-v03 -Force | Where-Object Name -ne '.github' | Copy-Item -Destination . -Recurse
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add Source Assets tests CMakeLists.txt CMakePresets.json CONCEPT.md README.md SOURCE_CHECKS.json TEST_REPORT.md .gitignore
+            git add TECHNICAL_CONCEPT.md Source Assets tests CMakeLists.txt CMakePresets.json CONCEPT.md README.md SOURCE_CHECKS.json TEST_REPORT.md .gitignore
             git commit -m "Import JUCE GUI sources and design assets"
             git push
           }
@@ -28,43 +28,45 @@ jobs:
         run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64
       - name: Build Release
         run: cmake --build build --config Release --parallel 4
-      - name: Run engine, processor, math and GUI tests
+      - name: Run engine, processor, math, GUI and evolution tests
         run: ctest --test-dir build -C Release --output-on-failure --output-junit test-results.xml
       - name: Package complete VST3 bundle
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force package | Out-Null
-          $bundle = "build/FractalLabV02b_artefacts/Release/VST3/FRACTAL LAB MANDELBROT v0.2b.vst3"
-          if (!(Test-Path "$bundle/Contents/x86_64-win/FRACTAL LAB MANDELBROT v0.2b.vst3")) { throw "Expected Windows VST3 binary missing" }
+          $bundle = "build/FractalLabV03_artefacts/Release/VST3/FRACTAL LAB MANDELBROT v0.3.vst3"
+          if (!(Test-Path "$bundle/Contents/x86_64-win/FRACTAL LAB MANDELBROT v0.3.vst3")) { throw "Expected Windows VST3 binary missing" }
           Copy-Item -LiteralPath $bundle -Destination package -Recurse
           @'
-          FRACTAL LAB MANDELBROT v0.2b - Windows x64 VST3
+          FRACTAL LAB MANDELBROT v0.3 - Windows x64 VST3
           Extract the ZIP. Copy the complete .vst3 folder to:
           C:\Program Files\Common Files\VST3
-          Rescan VST3 plugins in Ableton Live, then load FRACTAL LAB MANDELBROT v0.2b.
-          Keep your installed MANDELBROT MIDI v0.2a for fallback.
-          This MIDI-generating plugin has silent audio output; route its MIDI to an instrument as with v0.2a.
+          Rescan VST3 plugins in Ableton Live, then load FRACTAL LAB MANDELBROT v0.3.
+          Keep your installed MANDELBROT MIDI v0.2b for fallback.
+          This MIDI-generating plugin has silent audio output; route its MIDI to an instrument as with v0.2b.
           APC20 mappings are configured in the host. Practical Ableton/APC20 testing remains pending.
+          Stop transport, edit navigation, press PREPARE and wait before Play. Flight On / MATH FLIGHT / Speed 1 / Evolution 8 bars / SUBTLE are recommended.
+          This is a phase-3 prototype; VISUAL FLIGHT, EXPLORE and structure modes are not implemented.
           Build and automated tests passed before this package was created.
           '@ | Set-Content package/INSTALL.txt
-          Get-FileHash -LiteralPath "$bundle/Contents/x86_64-win/FRACTAL LAB MANDELBROT v0.2b.vst3" | Format-List | Out-File package/SHA256.txt
-          Compress-Archive -Path package/* -DestinationPath FRACTAL-LAB-MANDELBROT-v0.2b-Windows-x64-VST3.zip
+          Get-FileHash -LiteralPath "$bundle/Contents/x86_64-win/FRACTAL LAB MANDELBROT v0.3.vst3" | Format-List | Out-File package/SHA256.txt
+          Compress-Archive -Path package/* -DestinationPath FRACTAL-LAB-MANDELBROT-v0.3-Windows-x64-VST3.zip
       - uses: actions/upload-artifact@v4
         with:
-          name: FRACTAL-LAB-MANDELBROT-v0.2b-Windows-x64-VST3
-          path: FRACTAL-LAB-MANDELBROT-v0.2b-Windows-x64-VST3.zip
+          name: FRACTAL-LAB-MANDELBROT-v0.3-Windows-x64-VST3
+          path: FRACTAL-LAB-MANDELBROT-v0.3-Windows-x64-VST3.zip
           if-no-files-found: error
       - name: Publish Ableton test build
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v0.2b-preview
-          name: FRACTAL LAB v0.2b - Windows VST3 test build
+          tag_name: v0.3-prototype
+          name: FRACTAL LAB v0.3 - Windows VST3 test build
           prerelease: true
           body: |
             Windows x64 VST3 bundle for testing in Ableton Live.
-            Release build and engine, processor, view-math and GUI attachment tests passed.
-            Practical Ableton/APC20 testing is pending. v0.2a remains separate.
-          files: FRACTAL-LAB-MANDELBROT-v0.2b-Windows-x64-VST3.zip
+            Release build and engine, processor, view-math, GUI attachment and evolution tests passed.
+            Practical Ableton/APC20 testing is pending. v0.2b remains separate.
+          files: FRACTAL-LAB-MANDELBROT-v0.3-Windows-x64-VST3.zip
       - name: Upload test diagnostics
         if: always()
         uses: actions/upload-artifact@v4
