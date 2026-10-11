@@ -1,6 +1,8 @@
 # FRACTAL LAB – MANDELBROT v0.2b GUI
 
-Implementierter, noch nicht kompilierter JUCE-GUI-Quellstand auf Basis des lokalen v0.2a-Snapshots (Manifest-Commit `04d2b7311e169d75a924ea248e57fa637ebf655d`). Kein fertiges VST3-Binary; Host-/APC20-Abnahme offen. Siehe TEST_REPORT.md.
+Windows-x64-VST3 erfolgreich gebaut; alle vier automatisierten Tests bestanden. [Installierbare ZIP herunterladen](https://github.com/paddo1210/fractal-lab-mandelbrot/releases/download/v0.2b-preview/FRACTAL-LAB-MANDELBROT-v0.2b-Windows-x64-VST3.zip). [Build #2](https://github.com/paddo1210/fractal-lab-mandelbrot/actions/runs/38156945057), getesteter Commit `45261520b2c9bcec991ab2777ba8917289ac1156`. Praktische Ableton-/APC20-Abnahme und visuelle Laufzeitprüfung bleiben offen. Siehe TEST_REPORT.md.
+
+ZIP entpacken und den vollständigen Ordner `FRACTAL LAB MANDELBROT v0.2b.vst3` nach `C:\Program Files\Common Files\VST3` kopieren, danach in Live neu scannen. Die neue Kennung erhält v0.2a als separates Plugin. Im Repository sind die normalen Quellen beziehungsweise das GitHub-Quellarchiv des Release-Tags maßgeblich; FractalLab-v02b-source.zip dokumentiert den ursprünglichen Import vor der Compilerkorrektur.
 
 ## Oberfläche und Architektur
 
@@ -38,4 +40,4 @@ ctest --preset release --verbose
 
 Offline JUCE über -DJUCE_SOURCE_DIR=<lokaler JUCE-8.0.6-Pfad> bereitstellen. VST3-Ziel: build/FractalLabV02b_artefacts/Release/VST3/FRACTAL LAB MANDELBROT v0.2b.vst3.
 
-CTest enthält Engine-, Processor-, ViewMath- und GUI-Attachment-Tests. Keiner dieser C++-Tests wurde in dieser Sitzung ausgeführt. Erst nach Build und Host-Abnahme als nutzbares Plugin behandeln.
+CTest enthält Engine-, Processor-, ViewMath- und GUI-Attachment-Tests. Alle vier wurden im Windows-Release-Build #2 erfolgreich ausgeführt. Die Veröffentlichung ist als Preview für die noch offene Ableton-/APC20-Abnahme markiert.

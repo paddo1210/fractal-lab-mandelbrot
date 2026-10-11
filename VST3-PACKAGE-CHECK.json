@@ -1,0 +1,12 @@
+{
+  "zip": "FRACTAL-LAB-MANDELBROT-v0.2b-Windows-x64-VST3.zip",
+  "binary": "FRACTAL LAB MANDELBROT v0.2b.vst3/Contents/x86_64-win/FRACTAL LAB MANDELBROT v0.2b.vst3",
+  "architecture": "Windows x64",
+  "format": "PE DLL in VST3 bundle",
+  "binary_bytes": 8776192,
+  "binary_sha256": "a0ba96668bd26c47e911f7e5aa5d095cc53a42859ce437a7f82ffd8ea72dbe1c",
+  "zip_sha256": "f82a85654c13fe5740d3d8c3316cdc70b76f4e21163f15b8114d97dbcd6fe70a",
+  "archive_crc_ok": true,
+  "entry_count": 5,
+  "validation": "Archive structure, CRC, Windows x64 DLL header and packaged SHA256 checked; no local host execution"
+}
