@@ -71,7 +71,7 @@ public:
         g.setColour(enabled ? text() : muted().withAlpha(.4f));
         g.drawLine(c.x+std::sin(a)*inner*.48f,c.y-std::cos(a)*inner*.48f,c.x+std::sin(a)*inner*.86f,c.y-std::cos(a)*inner*.86f,2);
     }
-    void drawButtonBackground(juce::Graphics& g,juce::TextButton& button,const juce::Colour&,bool hover,bool down) override {
+    void drawButtonBackground(juce::Graphics& g,juce::Button& button,const juce::Colour&,bool hover,bool down) override {
         auto bounds=button.getLocalBounds().toFloat().reduced(1);
         const bool active=button.getToggleState() || down;
         auto fill=active ? cyan() : panel();
