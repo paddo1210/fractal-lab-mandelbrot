@@ -13,17 +13,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Import uploaded source archive
+        id: source
         shell: pwsh
         run: |
-          if (!(Test-Path Source/Evolution.h)) {
+          $archiveHash = (Get-FileHash -LiteralPath FractalLab-v03-source.zip).Hash
+          $recordedHash = if(Test-Path .source-import-sha256) {(Get-Content .source-import-sha256 -Raw).Trim()} else {""}
+          if($archiveHash -ne $recordedHash) {
             Expand-Archive -LiteralPath FractalLab-v03-source.zip -DestinationPath source-import
             Get-ChildItem source-import/FractalLab-v03 -Force | Where-Object Name -ne '.github' | Copy-Item -Destination . -Recurse -Force
+            Set-Content -LiteralPath .source-import-sha256 -Value $archiveHash
+            (Get-Item CMakeLists.txt).LastWriteTimeUtc = [DateTime]::UtcNow
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add TECHNICAL_CONCEPT.md Source Assets tests CMakeLists.txt CMakePresets.json CONCEPT.md README.md SOURCE_CHECKS.json TEST_REPORT.md .gitignore
+            git add .source-import-sha256 TECHNICAL_CONCEPT.md Source Assets tests CMakeLists.txt CMakePresets.json CONCEPT.md README.md SOURCE_CHECKS.json TEST_REPORT.md .gitignore
             git commit -m "Import JUCE GUI sources and design assets"
             git push
           }
+          "commit=$(git rev-parse HEAD)" >> $env:GITHUB_OUTPUT
       - name: Configure Windows x64
         run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64
       - name: Build Release
@@ -59,6 +65,7 @@ jobs:
       - name: Publish Ableton test build
         uses: softprops/action-gh-release@v2
         with:
+          target_commitish: ${{ steps.source.outputs.commit }}
           tag_name: v0.3-prototype
           name: FRACTAL LAB v0.3 - Windows VST3 test build
           prerelease: true
